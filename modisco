@@ -23,6 +23,12 @@ desc = """TF-MoDISco is a motif detection algorithm that takes in nucleotide
 parser = argparse.ArgumentParser(description=desc)
 subparsers = parser.add_subparsers(help="Must be either 'motifs', 'report', 'report-simple', 'convert', 'convert-backward', 'meme', 'seqlet-bed', or 'seqlet-fasta'.", required=True, dest='cmd')
 
+# SJ: Adding in shape expectations from the repo: the one-hot encoded sequences
+# and attributions are assumed to be in length-last format, i.e., have the shape
+# (# examples, 4, sequence length).
+# -w now intepreted as the size of the central window *or* flanking windows
+# -tg now sets the target for motif discovery, either 'center' or 'flank'
+
 motifs_parser = subparsers.add_parser("motifs", help="Run TF-MoDISco and extract the motifs.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 motifs_parser.add_argument("-s", "--sequences", type=str,
 	help="A .npy or .npz file containing the one-hot encoded sequences.")
@@ -35,7 +41,9 @@ motifs_parser.add_argument("-n", "--max_seqlets", type=int, required=True,
 motifs_parser.add_argument("-l", "--n_leiden", type=int, default=2,
 	help="The number of Leiden clusterings to perform with different random seeds.")
 motifs_parser.add_argument("-w", "--window", type=int, default=400,
-	help="The window surrounding the peak center that will be considered for motif discovery.")
+	help="The window that will be considered for motif discovery, by default at the center of the region, otherwise at each flank if --target flank is passed.")
+motifs_parser.add_argument("-tg", "--target", type=str, default="center",
+	help="The target region to use for motif discovery. This can be 'center' or 'flank'.")
 motifs_parser.add_argument("-z", "--size", type=int, default=20,
 	help="The size of the seqlet cores, corresponding to `sliding_window_size`.")
 motifs_parser.add_argument("-t", "--trim_size", type=int, default=30,
@@ -177,17 +185,60 @@ def convert_arg_chroms_to_list(chroms: str) -> Union[List[str], Literal['*']]:
 args = parser.parse_args()
 
 if args.cmd == "motifs":
+
+	# --------------------------------------------------------------------------
+	# SJ: Note regarding calculation of the input region
+	# --------------------------------------------------------------------------
+	# The center is the midpoint of the window; with ChromBPNet defaults,
+	# the center will be 2114 / 2 = 1057
+	# The start and end are the relative coordinates within the attributions
+	# window where MoDISco will look for motifs. With ChromBPNet defaults and
+	# the default TF-MoDISco window size of 400, 
+	# the start will be 1057 - 200 = 857 and the end will be 1057 + 200 = 1257,
+	# so the window will be 400 bp long.
+	# I've modified the sequences/attribution processing to allow for selection
+	# of the regions at each flank of size args.window. 
+
 	if args.h5py is not None:
+
 		# Load the scores
+		# SJ: attribution scores are precomputed using DeepLIFT/SHAP and passed
+		# as input to tf-modiscolite, as a path to an h5 file
 		scores = h5py.File(args.h5py, 'r')
 
+		# SJ: Then the sequences (OHE) and the attribution scores at those sequences
+		# are extracted within the relevant regions
 		try:
-			center = scores['hyp_scores'].shape[1] // 2
-			start, end = calculate_window_offsets(center, args.window)
-			
-			attributions = scores['hyp_scores'][:, start:end, :]
-			sequences = scores['input_seqs'][:, start:end, :]
+
+			if args.target == "center":
+
+				center = scores['hyp_scores'].shape[1] // 2
+				start, end = calculate_window_offsets(center, args.window)
+				
+				sequences = scores['input_seqs'][:, start:end, :]
+				attributions = scores['hyp_scores'][:, start:end, :]
+
+			elif args.target == "flank":
+
+				start_L = 0
+				end_L = args.window
+				start_R = scores['hyp_scores'].shape[1] - args.window
+				end_R = scores['hyp_scores'].shape[1]
+
+				print(start_L, end_L, start_R, end_R)
+				
+				sequences = np.concatenate(
+					(scores['input_seqs'][:, start_L:end_L, :], 
+					 scores['input_seqs'][:, start_R:end_R, :]),
+					axis=0)
+				
+				attributions = np.concatenate(
+					(scores['hyp_scores'][:, start_L:end_L, :], 
+					 scores['hyp_scores'][:, start_R:end_R, :]),
+					axis=0)
+
 		except KeyError:
+
 			center = scores['shap']['seq'].shape[2] // 2
 			start, end = calculate_window_offsets(center, args.window)
 			
@@ -196,9 +247,35 @@ if args.cmd == "motifs":
 			
 			print(start, end, attributions.shape, sequences.shape)
 
+			if args.target == "center":
+
+				center = scores['shap']['seq'].shape[2] // 2
+				start, end = calculate_window_offsets(center, args.window)
+				
+				attributions = scores['shap']['seq'][:, :, start:end].transpose(0, 2, 1)
+				sequences = scores['raw']['seq'][:, :, start:end].transpose(0, 2, 1)
+
+			elif args.target == "flank":
+
+				start_L = 0
+				end_L = args.window
+				start_R = scores['shap']['seq'].shape[2] // 2 - args.window
+				end_R = scores['shap']['seq'].shape[2] // 2
+
+				sequences = np.concatenate(
+					(scores['raw']['seq'][:, :, start_L:end_L], 
+					 scores['raw']['seq'][:, :, start_R:end_R]),
+					axis=0).transpose(0, 2, 1)
+				
+				attributions = np.concatenate(
+					(scores['shap']['seq'][:, :, start_L:end_L], 
+					 scores['shap']['seq'][:, :, start_R:end_R]),
+					axis=0)
+
 		scores.close()
 
 	else:
+		
 		if args.sequences[-3:] == 'npy':
 			sequences = np.load(args.sequences)
 		elif args.sequences[-3:] == 'npz':
@@ -209,11 +286,34 @@ if args.cmd == "motifs":
 		elif args.attributions[-3:] == 'npz':
 			attributions = np.load(args.attributions)['arr_0']
 
-		center = sequences.shape[2] // 2
-		start, end = calculate_window_offsets(center, args.window)
+		if args.target not in ["center", "flank"]:
+			raise ValueError("Target must be either 'center' or 'flank'.")
 
-		sequences = sequences[:, :, start:end].transpose(0, 2, 1)
-		attributions = attributions[:, :, start:end].transpose(0, 2, 1)
+		if args.target == "center":
+
+			center = sequences.shape[2] // 2
+			start, end = calculate_window_offsets(center, args.window)
+			
+			sequences = sequences[:, :, start:end].transpose(0, 2, 1)
+			attributions = attributions[:, :, start:end].transpose(0, 2, 1)
+
+		elif args.target == "flank":
+			start_L = 0
+			end_L = args.window
+			start_R = sequences.shape[2] - args.window
+			end_R = sequences.shape[2]
+
+			print(start_L, end_L, start_R, end_R)
+			
+			sequences = np.concatenate(
+				(sequences[:, :, start_L:end_L], sequences[:, :, start_R:end_R]),
+				axis=0
+			).transpose(0, 2, 1)
+			
+			attributions = np.concatenate(
+				(attributions[:, :, start_L:end_L], attributions[:, :, start_R:end_R]),
+				axis=0
+			).transpose(0, 2, 1)
 
 	if sequences.shape[1] < args.window:
 		raise ValueError("Window ({}) cannot be ".format(args.window) +
@@ -221,7 +321,6 @@ if args.cmd == "motifs":
 
 	sequences = sequences.astype('float32')
 	attributions = attributions.astype('float32')
-
 
 	pos_patterns, neg_patterns = modiscolite.tfmodisco.TFMoDISco(
 		hypothetical_contribs=attributions, 
