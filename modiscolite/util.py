@@ -20,7 +20,6 @@ class MemeDataType(Enum):
 		return self.value
 
 
-
 def cpu_sliding_window_sum(arr, window_size):
 	to_return = np.zeros(len(arr)-window_size+1)
 	current_sum = np.sum(arr[0:window_size])

@@ -1,5 +1,15 @@
 # tfmodisco-lite
 
+
+> **Update 2025/06/09**
+
+This is a fork of the tfmodisco-lite package authored by Jacob Schreiber in the Kundaje Lab.
+Here, I make some simple tweaks to be able to point the TF-MoDISco motif discovery
+algorithm at the flanking regions instead of only the central window, using an
+additional argument `--target`, passed to the `modisco motifs` command.
+
+
+
 > **Warning**
 > tfmodisco-lite v2.0.0 and above may produce slightly different results from the original TF-MoDISCo code as minor bugs are fixed and some speed improvements required swapping sorting algorithms.
 
