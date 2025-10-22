@@ -4,15 +4,19 @@
 
 This is a fork of the tfmodisco-lite package authored by Jacob Schreiber in the Kundaje Lab.
 Here, I make some simple tweaks to be able to point the TF-MoDISco motif discovery
-algorithm at the flanking regions instead of only the central window, using an
-additional argument `--target`, passed to the `modisco motifs` command.
+algorithm at the flanking regions instead of only the central window, in the `modisco motifs` command.
 
-TF-MoDISco (**T**ranscription **F**actor **Mo**tif **D**iscovery from **I**mportance **Sco**res) is an algorithm for discovering sequence motifs from machine-learning-model-derived importance scores. Unlike traditional motif discovery methods that rely solely on sequence enrichment, TF-MoDISco leverages context-aware importance scores to identify patterns.
+By default, TF-MoDISco operates on the center window of the provided sequences (`--target center`).
+To use TF-MoDISco on flanking regions, pass `--target flank` to the `modisco motifs` command.
+The window size `-w` will then refer to the size of the flanking regions on each side of the center.
+e.g. For `-w 400 --target flank`, MoDISco will operate on the first 400 and last 400 positions of the
+input regions.
 
 > **Warning**
 > tfmodisco-lite v2.0.0 and above may produce slightly different results from the original TF-MoDISCo code as minor bugs are fixed and some speed improvements required swapping sorting algorithms.
 
 These importance scores can be generated using various attribution methods, such as DeepLIFT or SHAP, applied to models like BPNet. The algorithm identifies high-importance regions (seqlets), clusters them into motifs, and provides a report comparing discovered motifs to known databases.
+
 
 > [!IMPORTANT]  
 > Starting from version v2, TF-MoDISco utilizes the [tfmodisco-lite](https://github.com/jmschrei/tfmodisco-lite/) implementation and interface. This implementation is significantly more memory efficient, and in many cases faster, than the original implementation. The original implementation (v0) is still available [here](https://github.com/kundajelab/tfmodisco/tree/v0-final).
