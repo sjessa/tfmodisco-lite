@@ -5,10 +5,13 @@
 
 This is a fork of the tfmodisco-lite package authored by Jacob Schreiber in the Kundaje Lab.
 Here, I make some simple tweaks to be able to point the TF-MoDISco motif discovery
-algorithm at the flanking regions instead of only the central window, using an
-additional argument `--target`, passed to the `modisco motifs` command.
+algorithm at the flanking regions instead of only the central window, in the `modisco motifs` command.
 
-
+By default, TF-MoDISco operates on the center window of the provided sequences (`--target center`).
+To use TF-MoDISco on flanking regions, pass `--target flank` to the `modisco motifs` command.
+The window size `-w` will then refer to the size of the flanking regions on each side of the center.
+e.g. For `-w 400 --target flank`, MoDISco will operate on the first 400 and last 400 positions of the
+innput regions.
 
 > **Warning**
 > tfmodisco-lite v2.0.0 and above may produce slightly different results from the original TF-MoDISCo code as minor bugs are fixed and some speed improvements required swapping sorting algorithms.
