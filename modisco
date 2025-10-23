@@ -118,8 +118,8 @@ The options are as follows:
 - 'PFM':      The position-frequency matrix.
 - 'CWM':      The contribution-weight matrix.
 - 'hCWM':     The hypothetical contribution-weight matrix; hypothetical
-              contribution scores are the contributions of nucleotides not encoded
-              by the one-hot encoding sequence. 
+			  contribution scores are the contributions of nucleotides not encoded
+			  by the one-hot encoding sequence. 
 - 'CWM-PFM':  The softmax of the contribution-weight matrix.
 - 'hCWM-PFM': The softmax of the hypothetical contribution-weight matrix."""
 )
@@ -209,70 +209,56 @@ if args.cmd == "motifs":
 		# SJ: Then the sequences (OHE) and the attribution scores at those sequences
 		# are extracted within the relevant regions
 		try:
-
 			if args.target == "center":
-
 				center = scores['hyp_scores'].shape[1] // 2
 				start, end = calculate_window_offsets(center, args.window)
-				
-				sequences = scores['input_seqs'][:, start:end, :]
-				attributions = scores['hyp_scores'][:, start:end, :]
+
+				sequences = scores['input_seqs'][:, start:end, :].transpose(0, 2, 1)
+				attributions = scores['hyp_scores'][:, start:end, :].transpose(0, 2, 1)
 
 			elif args.target == "flank":
-
 				start_L = 0
 				end_L = args.window
 				start_R = scores['hyp_scores'].shape[1] - args.window
 				end_R = scores['hyp_scores'].shape[1]
 
-				print(start_L, end_L, start_R, end_R)
-				
 				sequences = np.concatenate(
-					(scores['input_seqs'][:, start_L:end_L, :], 
+					(scores['input_seqs'][:, start_L:end_L, :],
 					 scores['input_seqs'][:, start_R:end_R, :]),
-					axis=0)
-				
+					axis=0
+				).transpose(0, 2, 1)
+
 				attributions = np.concatenate(
-					(scores['hyp_scores'][:, start_L:end_L, :], 
+					(scores['hyp_scores'][:, start_L:end_L, :],
 					 scores['hyp_scores'][:, start_R:end_R, :]),
-					axis=0)
+					axis=0
+				).transpose(0, 2, 1)
 
 		except KeyError:
-
 			center = scores['shap']['seq'].shape[2] // 2
 			start, end = calculate_window_offsets(center, args.window)
-			
-			attributions = scores['shap']['seq'][:, :, start:end].transpose(0, 2, 1)
-			sequences = scores['raw']['seq'][:, :, start:end].transpose(0, 2, 1)
-			
-			print(start, end, attributions.shape, sequences.shape)
 
 			if args.target == "center":
-
-				center = scores['shap']['seq'].shape[2] // 2
-				start, end = calculate_window_offsets(center, args.window)
-				
-				attributions = scores['shap']['seq'][:, :, start:end].transpose(0, 2, 1)
 				sequences = scores['raw']['seq'][:, :, start:end].transpose(0, 2, 1)
+				attributions = scores['shap']['seq'][:, :, start:end].transpose(0, 2, 1)
 
 			elif args.target == "flank":
-
 				start_L = 0
 				end_L = args.window
 				start_R = scores['shap']['seq'].shape[2] // 2 - args.window
 				end_R = scores['shap']['seq'].shape[2] // 2
 
 				sequences = np.concatenate(
-					(scores['raw']['seq'][:, :, start_L:end_L], 
+					(scores['raw']['seq'][:, :, start_L:end_L],
 					 scores['raw']['seq'][:, :, start_R:end_R]),
-					axis=0).transpose(0, 2, 1)
-				
-				attributions = np.concatenate(
-					(scores['shap']['seq'][:, :, start_L:end_L], 
-					 scores['shap']['seq'][:, :, start_R:end_R]),
-					axis=0)
+					axis=0
+				).transpose(0, 2, 1)
 
-		scores.close()
+				attributions = np.concatenate(
+					(scores['shap']['seq'][:, :, start_L:end_L],
+					 scores['shap']['seq'][:, :, start_R:end_R]),
+					axis=0
+				).transpose(0, 2, 1)
 
 	else:
 		
@@ -317,7 +303,11 @@ if args.cmd == "motifs":
 
 	if sequences.shape[1] < args.window:
 		raise ValueError("Window ({}) cannot be ".format(args.window) +
-			"longer than the sequences".format(sequences.shape))
+			"longer than the sequences".format(sequences.shape))	
+
+	# check the shapes
+	print("Shape of sequences (one_hot):", sequences.shape)  # Expected: (N, L, C)
+	print("Shape of attributions (hypothetical_contribs):", attributions.shape)  # Expected: (N, L, C)
 
 	sequences = sequences.astype('float32')
 	attributions = attributions.astype('float32')
